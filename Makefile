@@ -17,7 +17,7 @@ all: $(OBJ) $(TEST_OBJ)
 	@echo $(SRC)
 	@echo $(OBJ)
 	$(CC) $(OBJ_OUT) $(OUTPUT_DIR)test_serv.o -o $(OUTPUT_DIR)test_serv $(LIB)
-#	$(CC) $(OBJ_OUT) $(OUTPUT_DIR)test_cli.o -o $(OUTPUT_DIR)test_cli $(LIB)
+	$(CC) $(OBJ_OUT) $(OUTPUT_DIR)test_cli.o -o $(OUTPUT_DIR)test_cli $(LIB)
 
 %.o: src/%.c
 	@echo $< $@
