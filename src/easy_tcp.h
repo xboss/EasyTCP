@@ -79,6 +79,7 @@ etcp_serv_conn_t *etcp_server_get_conn(etcp_serv_t *serv, int fd);
 /*                               EasyTCP Client                               */
 /* -------------------------------------------------------------------------- */
 
+typedef struct etcp_send_buf_s etcp_send_buf_t;
 typedef struct etcp_cli_s etcp_cli_t;
 
 typedef struct {
@@ -102,7 +103,9 @@ typedef struct {
     uint64_t last_w_tm;  // 最后一次写操作的时间戳
     void *user_data;
 
+    etcp_send_buf_t *send_buf;
     struct ev_io *r_watcher;
+    struct ev_io *w_watcher;
     // struct ev_timer *timeout_watcher;
     UT_hash_handle hh;
 } etcp_cli_conn_t;

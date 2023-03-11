@@ -7,6 +7,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include "utlist.h"
+
 /* -------------------------------------------------------------------------- */
 /*                               EasyTCP Common                               */
 /* -------------------------------------------------------------------------- */
@@ -196,7 +198,7 @@ static void serv_read_cb(struct ev_loop *loop, struct ev_io *watcher, int revent
 
     if (rt == 0) {
         // tcp close
-        _LOG("read_cb tcp close fd:%d, errno:%s", watcher->fd, strerror(errno));
+        // _LOG("read_cb tcp close fd:%d, errno:%s", watcher->fd, strerror(errno));
         _FREEIF(buf);
         etcp_server_close_conn(serv, watcher->fd);
         return;
@@ -434,7 +436,25 @@ etcp_serv_conn_t *etcp_server_get_conn(etcp_serv_t *serv, int fd) {
 /*                               EasyTCP Client                               */
 /* -------------------------------------------------------------------------- */
 
+struct etcp_send_buf_s {
+    char *buf;
+    int len;
+    etcp_send_buf_t *next, *prev;
+};
+
 /* ------------------------------- private api ------------------------------ */
+
+inline static void add_send_buf(etcp_cli_conn_t *conn, char *buf, int len) {
+    if (!conn || !buf || len <= 0) {
+        return;
+    }
+
+    etcp_send_buf_t *sb = _ALLOC(etcp_send_buf_t, sizeof(etcp_send_buf_t));
+    sb->buf = _ALLOC(char, len);
+    memcpy(sb->buf, buf, len);
+    sb->len = len;
+    DL_APPEND(conn->send_buf, sb);
+}
 
 inline static void add_cli_conn_ht(etcp_cli_t *cli, etcp_cli_conn_t *conn) {
     if (!conn) {
@@ -503,6 +523,33 @@ static int client_connect(struct sockaddr_in servaddr, long recv_timeout, long s
     return fd;
 }
 
+static int cli_send(etcp_cli_conn_t *conn, char *buf, size_t len) {
+    if (!conn || !buf || len <= 0) {
+        return 0;
+    }
+    int fd = conn->fd;
+    etcp_cli_t *cli = conn->cli;
+
+    ssize_t rt = tcp_write(fd, buf, len);
+    if (rt == 0) {
+        // tcp close
+        _LOG("cli_send tcp close fd:%d, errno:%s", fd, strerror(errno));
+        etcp_client_close_conn(cli, fd);
+        return 0;
+    } else if (rt == -1) {
+        // pending
+        _LOG("cli_send tcp pending fd:%d, errno:%s", fd, strerror(errno));
+        return 0;
+    } else if (rt == -2) {
+        // error
+        _LOG("cli_send tcp error fd:%d, errno:%s", fd, strerror(errno));
+        etcp_client_close_conn(cli, fd);
+        return 0;
+    }
+    conn->last_w_tm = getmillisecond();
+    return rt;
+}
+
 static void cli_read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
     if (EV_ERROR & revents) {
         _LOG("conn_read_cb error event fd: %d", watcher->fd);
@@ -539,6 +586,32 @@ static void cli_read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents
     conn->last_r_tm = getmillisecond();
 }
 
+static void cli_write_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
+    if (EV_ERROR & revents) {
+        _LOG("write_cb error event fd: %d", watcher->fd);
+        return;
+    }
+
+    etcp_cli_conn_t *conn = (etcp_cli_conn_t *)watcher->data;
+    etcp_cli_t *cli = conn->cli;
+
+    if (conn->send_buf) {
+        etcp_send_buf_t *sbtmp, *item;
+        DL_FOREACH_SAFE(conn->send_buf, item, sbtmp) {
+            int rt = cli_send(conn, item->buf, item->len);
+            if (rt <= 0) {
+                _LOG("write_cb write error fd:%d rt:%d errno:%d %s", conn->fd, rt, errno, strerror(errno));
+                return;
+            }
+            DL_DELETE(conn->send_buf, item);
+            _FREEIF(item->buf);
+            _FREEIF(item);
+        }
+        conn->send_buf = NULL;
+    }
+    ev_io_stop(cli->loop, conn->w_watcher);
+}
+
 /* ------------------------------- public api ------------------------------- */
 
 etcp_cli_t *etcp_init_client(etcp_cli_conf_t *conf, struct ev_loop *loop, void *user_data) {
@@ -573,25 +646,9 @@ int etcp_client_send(etcp_cli_t *cli, int fd, char *buf, size_t len) {
     if (!conn) {
         return 0;
     }
-
-    ssize_t rt = tcp_write(fd, buf, len);
-    if (rt == 0) {
-        // tcp close
-        _LOG("etcp_client_send tcp close fd:%d, errno:%s", fd, strerror(errno));
-        etcp_client_close_conn(cli, fd);
-        return 0;
-    } else if (rt == -1) {
-        // pending
-        _LOG("etcp_client_send tcp pending fd:%d, errno:%s", fd, strerror(errno));
-        return 0;
-    } else if (rt == -2) {
-        // error
-        _LOG("etcp_client_send tcp error fd:%d, errno:%s", fd, strerror(errno));
-        etcp_client_close_conn(cli, fd);
-        return 0;
-    }
-    conn->last_w_tm = getmillisecond();
-    return rt;
+    add_send_buf(conn, buf, len);
+    ev_io_start(cli->loop, conn->w_watcher);
+    return len;
 }
 
 int etcp_client_create_conn(etcp_cli_t *cli, char *addr, uint16_t port, void *user_data) {
@@ -611,6 +668,7 @@ int etcp_client_create_conn(etcp_cli_t *cli, char *addr, uint16_t port, void *us
 
     uint64_t now = getmillisecond();
     etcp_cli_conn_t *conn = _ALLOC(etcp_cli_conn_t, sizeof(etcp_cli_conn_t));
+    conn->send_buf = NULL;
     conn->fd = fd;
     conn->addr = servaddr;
     conn->cli = cli;
@@ -623,6 +681,11 @@ int etcp_client_create_conn(etcp_cli_t *cli, char *addr, uint16_t port, void *us
     conn->r_watcher->data = conn;
     ev_io_init(conn->r_watcher, cli_read_cb, fd, EV_READ);
     ev_io_start(cli->loop, conn->r_watcher);
+
+    conn->w_watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
+    conn->w_watcher->data = conn;
+    ev_io_init(conn->w_watcher, cli_write_cb, fd, EV_WRITE);
+    ev_io_start(cli->loop, conn->w_watcher);
 
     return conn->fd;
 }
@@ -640,6 +703,21 @@ void etcp_client_close_conn(etcp_cli_t *cli, int fd) {
     if (conn->r_watcher) {
         ev_io_stop(cli->loop, conn->r_watcher);
         _FREEIF(conn->r_watcher);
+    }
+
+    if (conn->w_watcher) {
+        ev_io_stop(cli->loop, conn->w_watcher);
+        _FREEIF(conn->w_watcher);
+    }
+
+    if (conn->send_buf) {
+        etcp_send_buf_t *sbtmp, *item;
+        DL_FOREACH_SAFE(conn->send_buf, item, sbtmp) {
+            DL_DELETE(conn->send_buf, item);
+            _FREEIF(item->buf);
+            _FREEIF(item);
+        }
+        conn->send_buf = NULL;
     }
 
     if (cli->conn_ht) {

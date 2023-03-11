@@ -16,7 +16,7 @@
 static struct ev_timer *send_watcher = NULL;
 static etcp_cli_t *cli = NULL;
 static int cli_fd = 0;
-static char addr[] = "127.0.0.1";
+static char addr[64] = "127.0.0.1";
 static uint16_t port = 8888;
 
 static void on_recv(int fd, char *buf, int len) {
@@ -24,9 +24,12 @@ static void on_recv(int fd, char *buf, int len) {
     if (len > 0) {
         memcpy(msg, buf, len);
     }
-    _LOG("client on_recv cid: %d len: %d  msg: %s", fd, len, msg);
+    _LOG("client on_recv fd: %d len: %d  msg: %s", fd, len, msg);
 }
-static void on_close(int fd) { _LOG("server on_close cid: %d", fd); }
+static void on_close(int fd) {
+    _LOG("client on_close fd: %d", fd);
+    cli_fd = 0;
+}
 
 static void send_cb(struct ev_loop *loop, struct ev_timer *watcher, int revents) {
     if (EV_ERROR & revents) {
@@ -35,13 +38,13 @@ static void send_cb(struct ev_loop *loop, struct ev_timer *watcher, int revents)
     }
     int rt;
 
-    // etcp_cli_conn_t *conn = skcp_get_conn(cli, g_cid);
     etcp_cli_t *cli = (etcp_cli_t *)watcher->data;
 
     if (cli_fd <= 0) {
         cli_fd = etcp_client_create_conn(cli, addr, port, NULL);
         assert(cli_fd > 0);
-        return;
+        // return;
+        // ev_sleep(10);
     }
     // connection alive
     char msg[10000] = {0};
@@ -83,6 +86,16 @@ int main(int argc, char const *argv[]) {
 #else
     struct ev_loop *loop = ev_default_loop(0);
 #endif
+
+    if (argc == 3) {
+        if (argv[1]) {
+            memcpy(addr, argv[1], strlen(argv[1]));
+            addr[strlen(argv[1])] = '\0';
+        }
+        if (argv[2]) {
+            port = atoi(argv[2]);
+        }
+    }
 
     etcp_cli_conf_t *conf = malloc(sizeof(etcp_cli_conf_t));
     ETCP_CLI_DEF_CONF(conf);

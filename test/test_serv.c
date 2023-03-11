@@ -16,6 +16,9 @@ static etcp_serv_t *serv = NULL;
 
 static int on_accept(int fd) {
     _LOG("server accept fd: %d", fd);
+    // char msg[] = "ok...";
+    // int rt = etcp_server_send(serv, fd, msg, strlen(msg));
+    // assert(rt >= 0);
     return 0;
 }
 static void on_recv(int fd, char *buf, int len) {
