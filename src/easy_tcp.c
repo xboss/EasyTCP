@@ -437,9 +437,9 @@ etcp_serv_conn_t *etcp_server_get_conn(etcp_serv_t *serv, int fd) {
 /* -------------------------------------------------------------------------- */
 
 struct etcp_send_buf_s {
-    char *buf;
     int len;
     etcp_send_buf_t *next, *prev;
+    char buf[];
 };
 
 /* ------------------------------- private api ------------------------------ */
@@ -449,8 +449,8 @@ inline static void add_send_buf(etcp_cli_conn_t *conn, char *buf, int len) {
         return;
     }
 
-    etcp_send_buf_t *sb = _ALLOC(etcp_send_buf_t, sizeof(etcp_send_buf_t));
-    sb->buf = _ALLOC(char, len);
+    etcp_send_buf_t *sb = _ALLOC(etcp_send_buf_t, sizeof(etcp_send_buf_t) + len);
+    // sb->buf = _ALLOC(char, len);
     memcpy(sb->buf, buf, len);
     sb->len = len;
     DL_APPEND(conn->send_buf, sb);
@@ -604,7 +604,7 @@ static void cli_write_cb(struct ev_loop *loop, struct ev_io *watcher, int revent
                 return;
             }
             DL_DELETE(conn->send_buf, item);
-            _FREEIF(item->buf);
+            // _FREEIF(item->buf);
             _FREEIF(item);
         }
         conn->send_buf = NULL;
@@ -714,7 +714,7 @@ void etcp_client_close_conn(etcp_cli_t *cli, int fd) {
         etcp_send_buf_t *sbtmp, *item;
         DL_FOREACH_SAFE(conn->send_buf, item, sbtmp) {
             DL_DELETE(conn->send_buf, item);
-            _FREEIF(item->buf);
+            // _FREEIF(item->buf);
             _FREEIF(item);
         }
         conn->send_buf = NULL;
