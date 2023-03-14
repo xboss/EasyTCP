@@ -29,14 +29,14 @@
         printf("\n");        \
     } while (0)
 
-uint64_t getmillisecond() {
+inline static uint64_t getmillisecond() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     uint64_t millisecond = (tv.tv_sec * 1000000l + tv.tv_usec) / 1000l;
     return millisecond;
 }
 
-int setnonblock(int fd) {
+inline static int setnonblock(int fd) {
     if (-1 == fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)) {
         _LOG("error fcntl");
         return -1;
@@ -44,7 +44,7 @@ int setnonblock(int fd) {
     return 0;
 }
 
-int setreuseaddr(int fd) {
+inline static int setreuseaddr(int fd) {
     int reuse = 1;
     if (-1 == setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse))) {
         _LOG("error setsockopt");
@@ -53,7 +53,7 @@ int setreuseaddr(int fd) {
     return 0;
 }
 
-void set_recv_timeout(int fd, time_t sec) {
+inline static void set_recv_timeout(int fd, time_t sec) {
     struct timeval timeout;
     timeout.tv_sec = sec;
     timeout.tv_usec = 0;
@@ -62,7 +62,7 @@ void set_recv_timeout(int fd, time_t sec) {
     }
 }
 
-void set_send_timeout(int fd, time_t sec) {
+inline static void set_send_timeout(int fd, time_t sec) {
     struct timeval timeout;
     timeout.tv_sec = sec;
     timeout.tv_usec = 0;
@@ -179,7 +179,7 @@ static void serv_timeout_cb(struct ev_loop *loop, struct ev_timer *watcher, int 
         (now - conn->last_w_tm) >= serv->conf->w_keepalive * 1000) {
         // 超时
         _LOG("timeout_cb timeout free fd:%d", conn->fd);
-        etcp_server_close_conn(serv, conn->fd);
+        etcp_server_close_conn(serv, conn->fd, 0);
         return;
     }
 }
@@ -200,7 +200,7 @@ static void serv_read_cb(struct ev_loop *loop, struct ev_io *watcher, int revent
         // tcp close
         // _LOG("read_cb tcp close fd:%d, errno:%s", watcher->fd, strerror(errno));
         _FREEIF(buf);
-        etcp_server_close_conn(serv, watcher->fd);
+        etcp_server_close_conn(serv, watcher->fd, 0);
         return;
     } else if (rt == -1) {
         // pending
@@ -211,7 +211,7 @@ static void serv_read_cb(struct ev_loop *loop, struct ev_io *watcher, int revent
         // error
         _LOG("read_cb tcp error fd:%d, errno:%s", watcher->fd, strerror(errno));
         _FREEIF(buf);
-        etcp_server_close_conn(serv, watcher->fd);
+        etcp_server_close_conn(serv, watcher->fd, 0);
         return;
     }
 
@@ -275,7 +275,7 @@ static void serv_accept_cb(struct ev_loop *loop, struct ev_io *watcher, int reve
 
     int rt = serv->conf->on_accept(conn->fd);
     if (rt != 0) {
-        etcp_server_close_conn(serv, conn->fd);
+        etcp_server_close_conn(serv, conn->fd, 0);
         return;
     }
 
@@ -354,7 +354,7 @@ void etcp_free_server(etcp_serv_t *serv) {
         etcp_serv_conn_t *conn, *tmp;
         HASH_ITER(hh, serv->conn_ht, conn, tmp) {
             HASH_DEL(serv->conn_ht, conn);
-            etcp_server_close_conn(serv, conn->fd);
+            etcp_server_close_conn(serv, conn->fd, 0);
         }
     }
 
@@ -367,6 +367,10 @@ void etcp_free_server(etcp_serv_t *serv) {
 }
 
 int etcp_server_send(etcp_serv_t *serv, int fd, char *buf, size_t len) {
+    if (!buf || len <= 0) {
+        return 0;
+    }
+
     etcp_serv_conn_t *conn = etcp_server_get_conn(serv, fd);
     if (!conn) {
         return 0;
@@ -376,7 +380,7 @@ int etcp_server_send(etcp_serv_t *serv, int fd, char *buf, size_t len) {
     if (rt == 0) {
         // tcp close
         _LOG("etcp_server_send tcp close fd:%d, errno:%s", fd, strerror(errno));
-        etcp_server_close_conn(serv, fd);
+        etcp_server_close_conn(serv, fd, 0);
         return 0;
     } else if (rt == -1) {
         // pending
@@ -385,14 +389,14 @@ int etcp_server_send(etcp_serv_t *serv, int fd, char *buf, size_t len) {
     } else if (rt == -2) {
         // error
         _LOG("etcp_server_send tcp error fd:%d, errno:%s", fd, strerror(errno));
-        etcp_server_close_conn(serv, fd);
+        etcp_server_close_conn(serv, fd, 0);
         return 0;
     }
     conn->last_w_tm = getmillisecond();
     return rt;
 }
 
-void etcp_server_close_conn(etcp_serv_t *serv, int fd) {
+void etcp_server_close_conn(etcp_serv_t *serv, int fd, int silent) {
     etcp_serv_conn_t *conn = find_serv_conn_ht(serv, fd);
     if (!conn) {
         _LOG("etcp_server_close_conn conn is NULL");
@@ -400,7 +404,9 @@ void etcp_server_close_conn(etcp_serv_t *serv, int fd) {
     }
     _LOG("etcp_server_close_conn fd:%d", conn->fd);
 
-    serv->conf->on_close(fd);
+    if (!silent) {
+        serv->conf->on_close(fd);
+    }
 
     if (conn->r_watcher) {
         ev_io_stop(serv->loop, conn->r_watcher);
@@ -534,7 +540,7 @@ static int cli_send(etcp_cli_conn_t *conn, char *buf, size_t len) {
     if (rt == 0) {
         // tcp close
         _LOG("cli_send tcp close fd:%d, errno:%s", fd, strerror(errno));
-        etcp_client_close_conn(cli, fd);
+        etcp_client_close_conn(cli, fd, 0);
         return 0;
     } else if (rt == -1) {
         // pending
@@ -543,7 +549,7 @@ static int cli_send(etcp_cli_conn_t *conn, char *buf, size_t len) {
     } else if (rt == -2) {
         // error
         _LOG("cli_send tcp error fd:%d, errno:%s", fd, strerror(errno));
-        etcp_client_close_conn(cli, fd);
+        etcp_client_close_conn(cli, fd, 0);
         return 0;
     }
     conn->last_w_tm = getmillisecond();
@@ -566,7 +572,7 @@ static void cli_read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents
         // tcp close
         _LOG("read_cb tcp close fd:%d, errno:%s", watcher->fd, strerror(errno));
         _FREEIF(buf);
-        etcp_client_close_conn(cli, watcher->fd);
+        etcp_client_close_conn(cli, watcher->fd, 0);
         return;
     } else if (rt == -1) {
         // pending
@@ -577,7 +583,7 @@ static void cli_read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents
         // error
         _LOG("read_cb tcp error fd:%d, errno:%s", watcher->fd, strerror(errno));
         _FREEIF(buf);
-        etcp_client_close_conn(cli, watcher->fd);
+        etcp_client_close_conn(cli, watcher->fd, 0);
         return;
     }
 
@@ -632,7 +638,7 @@ void etcp_free_client(etcp_cli_t *cli) {
         etcp_cli_conn_t *conn, *tmp;
         HASH_ITER(hh, cli->conn_ht, conn, tmp) {
             HASH_DEL(cli->conn_ht, conn);
-            etcp_client_close_conn(cli, conn->fd);
+            etcp_client_close_conn(cli, conn->fd, 0);
         }
     }
     cli->conf = NULL;
@@ -690,7 +696,7 @@ int etcp_client_create_conn(etcp_cli_t *cli, char *addr, uint16_t port, void *us
     return conn->fd;
 }
 
-void etcp_client_close_conn(etcp_cli_t *cli, int fd) {
+void etcp_client_close_conn(etcp_cli_t *cli, int fd, int silent) {
     etcp_cli_conn_t *conn = find_cli_conn_ht(cli, fd);
     if (!conn) {
         _LOG("etcp_client_close_conn conn is NULL");
@@ -698,7 +704,9 @@ void etcp_client_close_conn(etcp_cli_t *cli, int fd) {
     }
     _LOG("etcp_client_close_conn fd:%d", conn->fd);
 
-    cli->conf->on_close(fd);
+    if (!silent) {
+        cli->conf->on_close(fd);
+    }
 
     if (conn->r_watcher) {
         ev_io_stop(cli->loop, conn->r_watcher);
