@@ -1,6 +1,9 @@
 # EasyTCP
 EasyTCP is an asynchronous tcp library implemented in c language, including server and client implementations.
 
+## 状态
+“又不是不能用”，应用在[SKCPTUN](https://github.com/xboss/skcptun)
+
 ## 环境
 运行环境：Linux，MacOS
 
