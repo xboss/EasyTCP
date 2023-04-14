@@ -47,7 +47,7 @@ int main(int argc, char const *argv[]) {
 #endif
 
     etcp_serv_conf_t *conf = malloc(sizeof(etcp_serv_conf_t));
-    ETCP_SER_DEF_CONF(conf);
+    ETCP_SERV_DEF_CONF(conf);
     conf->serv_addr = "127.0.0.1";
     conf->on_accept = on_accept;
     conf->on_recv = on_recv;
