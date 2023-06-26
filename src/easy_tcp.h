@@ -88,8 +88,8 @@ typedef struct etcp_cli_conf_s {
     int w_keepalive;    // 单位：秒
     long recv_timeout;  // 单位：秒
     long send_timeout;  // 单位：秒
-    char *target_addr;
-    uint16_t target_port;
+    // char *target_addr;
+    // uint16_t target_port;
     // int timeout_interval;  // 单位：秒
 
     void (*on_recv)(int fd, char *buf, int len);
