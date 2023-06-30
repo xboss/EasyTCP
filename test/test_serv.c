@@ -22,12 +22,12 @@ static int on_accept(int fd) {
     return 0;
 }
 static void on_recv(int fd, char *buf, int len) {
-    char msg[10000] = {0};
-    if (len > 0) {
-        memcpy(msg, buf, len);
-    }
-    _LOG("server on_recv fd: %d len: %d  msg: %s", fd, len, msg);
-    int rt = etcp_server_send(serv, fd, msg, strlen(msg));
+    // char msg[1024] = {0};
+    // if (len > 0) {
+    //     memcpy(msg, buf, len);
+    // }
+    // _LOG("server on_recv fd: %d len: %d  msg: %s", fd, len, buf);
+    int rt = etcp_server_send(serv, fd, buf, len);
     assert(rt >= 0);
 }
 static void on_close(int fd) { _LOG("server on_close fd: %d", fd); }
@@ -52,7 +52,7 @@ int main(int argc, char const *argv[]) {
     conf->on_accept = on_accept;
     conf->on_recv = on_recv;
     conf->on_close = on_close;
-    conf->r_buf_size = 128;
+    conf->r_buf_size = 13;
 
     if (argc == 3) {
         if (argv[1]) {

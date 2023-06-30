@@ -1,7 +1,9 @@
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -19,12 +21,25 @@ static int cli_fd = 0;
 static char addr[64] = "127.0.0.1";
 static uint16_t port = 8888;
 
+static uint64_t getmillisecond() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    uint64_t millisecond = (tv.tv_sec * 1000000l + tv.tv_usec) / 1000l;
+    return millisecond;
+}
+
 static void on_recv(int fd, char *buf, int len) {
-    char msg[10000] = {0};
+    char msg[1024] = {0};
     if (len > 0) {
         memcpy(msg, buf, len);
     }
-    _LOG("client on_recv fd: %d len: %d  msg: %s", fd, len, msg);
+    char tm[32] = {0};
+    int tm_len = strlen(msg) > 31 ? 31 : strlen(msg);
+    sprintf(tm, msg, tm_len);
+    uint64_t tmi = atoll(tm);
+    uint64_t now = getmillisecond();
+    _LOG("rtt:%llu", now - tmi);
+    // _LOG("client on_recv fd: %d len: %d  msg: %s", fd, len, msg);
 }
 static void on_close(int fd) {
     _LOG("client on_close fd: %d", fd);
@@ -47,7 +62,7 @@ static void send_cb(struct ev_loop *loop, struct ev_timer *watcher, int revents)
         // ev_sleep(10);
     }
     // connection alive
-    char msg[10000] = {0};
+    char msg[1024] = {0};
     // int i = 0;
     // for (; i < 1000; i++) {
     //     msg[i] = 'a';
@@ -68,9 +83,10 @@ static void send_cb(struct ev_loop *loop, struct ev_timer *watcher, int revents)
     //     msg[i] = 'g';
     // }
 
-    sprintf(msg, "hello %lu", clock());
+    sprintf(msg, "%llu", getmillisecond());
     rt = etcp_client_send(cli, cli_fd, msg, strlen(msg));
     assert(rt >= 0);
+    // _LOG("msg: %s", msg);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -102,6 +118,7 @@ int main(int argc, char const *argv[]) {
 
     conf->on_close = on_close;
     conf->on_recv = on_recv;
+    conf->r_buf_size = 13;
 
     cli = etcp_init_client(conf, loop, NULL);
     assert(cli);
@@ -109,7 +126,7 @@ int main(int argc, char const *argv[]) {
     send_watcher = malloc(sizeof(ev_timer));
     send_watcher->data = cli;
     ev_init(send_watcher, send_cb);
-    ev_timer_set(send_watcher, 1, 2);
+    ev_timer_set(send_watcher, 1, 0.01);
     ev_timer_start(cli->loop, send_watcher);
 
     ev_run(loop, 0);
