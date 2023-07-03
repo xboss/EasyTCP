@@ -26,7 +26,7 @@ static void on_recv(int fd, char *buf, int len) {
     // if (len > 0) {
     //     memcpy(msg, buf, len);
     // }
-    // _LOG("server on_recv fd: %d len: %d  msg: %s", fd, len, buf);
+    _LOG("server on_recv fd: %d len: %d  msg: %s", fd, len, buf);
     int rt = etcp_server_send(serv, fd, buf, len);
     assert(rt >= 0);
 }

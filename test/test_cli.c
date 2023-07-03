@@ -21,6 +21,10 @@ static int cli_fd = 0;
 static char addr[64] = "127.0.0.1";
 static uint16_t port = 8888;
 
+uint64_t sum = 0;
+uint64_t cnt = 0;
+uint64_t avg = 0;
+
 static uint64_t getmillisecond() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -35,10 +39,17 @@ static void on_recv(int fd, char *buf, int len) {
     }
     char tm[32] = {0};
     int tm_len = strlen(msg) > 31 ? 31 : strlen(msg);
-    sprintf(tm, msg, tm_len);
+    memcpy(tm, msg, tm_len);
     uint64_t tmi = atoll(tm);
     uint64_t now = getmillisecond();
-    _LOG("rtt:%llu", now - tmi);
+    uint64_t rtt = now - tmi;
+    cnt++;
+    sum += rtt;
+    if (cnt > 0) {
+        avg = sum / cnt;
+    }
+
+    _LOG("rtt:%llu avg:%llu", rtt, avg);
     // _LOG("client on_recv fd: %d len: %d  msg: %s", fd, len, msg);
 }
 static void on_close(int fd) {
