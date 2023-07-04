@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -268,6 +269,12 @@ static void serv_accept_cb(struct ev_loop *loop, struct ev_io *watcher, int reve
     set_recv_timeout(cli_fd, serv->conf->recv_timeout);
     set_send_timeout(cli_fd, serv->conf->send_timeout);
 
+    if (serv->conf->nodelay == 1) {
+        if (setsockopt(cli_fd, IPPROTO_TCP, TCP_NODELAY, &serv->conf->nodelay, sizeof(serv->conf->nodelay)) < 0) {
+            _LOG("set tcp nodelay error");
+        }
+    }
+
     etcp_serv_conn_t *conn = init_serv_conn(serv, cli_fd);
     if (!conn) {
         return;
@@ -503,6 +510,7 @@ static int client_connect(struct sockaddr_in servaddr, long recv_timeout, long s
         return -1;
     }
 
+    // setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (int[]){1}, sizeof(int));
     // 设置非阻塞, 设置立即释放端口并可以再次使用
     setnonblock(fd);
     setreuseaddr(fd);
@@ -668,6 +676,11 @@ int etcp_client_create_conn(etcp_cli_t *cli, char *addr, uint16_t port, void *us
     if (fd <= 0) {
         _LOG("connect error addr: %s port: %u fd: %d", addr, port, fd);
         return -1;
+    }
+    if (cli->conf->nodelay == 1) {
+        if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &cli->conf->nodelay, sizeof(cli->conf->nodelay)) < 0) {
+            _LOG("set tcp nodelay error");
+        }
     }
 
     // _LOG("etcp_client_create_conn connect ok addr: %s, port: %d", addr, port);

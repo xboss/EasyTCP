@@ -26,7 +26,7 @@ static void on_recv(int fd, char *buf, int len) {
     // if (len > 0) {
     //     memcpy(msg, buf, len);
     // }
-    _LOG("server on_recv fd: %d len: %d  msg: %s", fd, len, buf);
+    // _LOG("server on_recv fd: %d len: %d  msg: %s", fd, len, buf);
     int rt = etcp_server_send(serv, fd, buf, len);
     assert(rt >= 0);
 }
@@ -53,6 +53,7 @@ int main(int argc, char const *argv[]) {
     conf->on_recv = on_recv;
     conf->on_close = on_close;
     conf->r_buf_size = 13;
+    conf->nodelay = 1;
 
     if (argc == 3) {
         if (argv[1]) {

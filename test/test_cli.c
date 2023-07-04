@@ -130,6 +130,7 @@ int main(int argc, char const *argv[]) {
     conf->on_close = on_close;
     conf->on_recv = on_recv;
     conf->r_buf_size = 13;
+    conf->nodelay = 1;
 
     cli = etcp_init_client(conf, loop, NULL);
     assert(cli);

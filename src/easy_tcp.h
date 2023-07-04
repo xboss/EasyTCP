@@ -20,6 +20,7 @@ typedef struct etcp_serv_conf_s {
     char *serv_addr;
     uint16_t serv_port;
     int backlog;
+    int nodelay;
     size_t r_buf_size;
     int r_keepalive;       // 单位：秒
     int w_keepalive;       // 单位：秒
@@ -61,6 +62,7 @@ struct etcp_serv_s {
         (vconf)->serv_addr = NULL;                    \
         (vconf)->serv_port = 8888;                    \
         (vconf)->backlog = 1024;                      \
+        (vconf)->nodelay = 0;                         \
         (vconf)->r_buf_size = 1024;                   \
         (vconf)->recv_timeout = 5;                    \
         (vconf)->send_timeout = 5;                    \
@@ -84,6 +86,7 @@ typedef struct etcp_cli_s etcp_cli_t;
 
 typedef struct etcp_cli_conf_s {
     size_t r_buf_size;
+    int nodelay;
     int r_keepalive;    // 单位：秒
     int w_keepalive;    // 单位：秒
     long recv_timeout;  // 单位：秒
@@ -123,6 +126,7 @@ struct etcp_cli_s {
     do {                                             \
         memset((vconf), 0, sizeof(etcp_cli_conf_t)); \
         (vconf)->r_buf_size = 1024;                  \
+        (vconf)->nodelay = 0;                        \
         (vconf)->recv_timeout = 5;                   \
         (vconf)->send_timeout = 5;                   \
         (vconf)->r_keepalive = 60;                   \
